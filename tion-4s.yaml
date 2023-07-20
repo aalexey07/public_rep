@@ -1,0 +1,163 @@
+# Скрипт для ESP32 ESPHOME. Подключается к бризеру по BLE, к интернету по Wi-Fi, к серверу по MQTT.
+# В зависимости от показаний СО2, температуры воздуха и времени суток, изменяет режимы работы бризера.
+# Аналитика на сервере, плата получает конкретную настройку для бризера.
+
+substitutions:
+  # tion mac address.
+  tion_mac_address: ###
+  # name of the node.
+  node_name: tion-4s
+  # name for main climate entity and prefix for all others.
+  name: $node_name
+  # add suffix for node name to have one firmware for many devices.
+  node_add_mac_suffix: "false"
+  # setup your board or leave it asis.
+  board: esp32dev
+  # wifi settings.
+  wifi_ssid: ###
+  wifi_password: ###
+
+packages:
+  # Common configuration parameters. Do not comment or remove!
+  common: github://dentra/esphome-tion/packages/common.yaml
+
+# WiFi hotspot configuration.
+# Comment next 3 lines to enable manual WiFi configuration via access point.
+wifi:
+  ssid: $wifi_ssid
+  password: $wifi_password
+
+ble_client:
+  mac_address: $tion_mac_address
+  id: tion_ble_client
+
+# MQTT configuration
+### Delete API line from YAML file if HA not used
+mqtt:
+    broker: ###
+    port: ###
+    username: ###
+    password: ###
+    # If the birth message and last will message have empty topics or topics that are different from each other,
+    # availability reporting will be disabled.
+    birth_message:
+        topic: python/mqtt/from_esp/brizer/tion_4s
+        payload: online
+    will_message:
+        topic: python/mqtt/from_esp/brizer/tion_4s
+        payload: offline
+                      
+# Virtual port configuration
+vport:
+  - platform: tion_ble
+    id: tion4s_ble_vport
+    ble_client_id: tion_ble_client
+    # Optional, How often query device state. Default: 60s.
+    update_interval: 60s
+    # Optional, Do not disconnect after receiving state. Default: false.
+    persistent_connection: false
+    # Optional, Timeout to reconnect if no state answer received. Default: 15s.
+    state_timeout: 15s
+    # Optional, Allow to disable other BLE device scanning when breezer is already connected.
+    disable_scan: false
+
+# Main component configuration.
+climate:
+  - platform: tion_4s
+    name: "$name"
+    # Required, the ID of the climate device to control.
+    id: my_climate
+    # Optional, virtual port id. Default: autodetect
+    vport_id: tion4s_ble_vport
+    # Optional, Recirculation control switch.
+    recirculation:
+      name: "$name Recirculation"
+      id: recirculation
+      on_turn_on:
+        # - mqtt.publish:
+        #    topic: "python/mqtt/from_esp/brizer/tion_4s"
+        #    payload: !lambda |-
+        #       return "recirculation:" + to_string(id(recirculation).state);
+        - mqtt.publish:
+           topic: "python/mqtt/from_esp/brizer/tion-4s/recirculation_state"
+           # Received `1` from `python/mqtt/from_esp/brizer/tion-4s/recirculation_state` topic
+           payload: !lambda |-
+              return to_string(id(recirculation).state);
+      on_turn_off:
+        # - mqtt.publish:
+        #    topic: "python/mqtt/from_esp/brizer/tion_4s"
+        #    payload: !lambda |-
+        #       return "recirculation:" + to_string(id(recirculation).state);
+        - mqtt.publish:
+           topic: "python/mqtt/from_esp/brizer/tion-4s/recirculation_state"
+           payload: !lambda |-
+              return to_string(id(recirculation).state);      
+    # Optional, Temperatire of air before heater, °C (celsius).
+    outdoor_temperature:
+      name: "$name Outdoor Temperature"
+      id: outdoor_temp
+      on_value:
+        - mqtt.publish:
+           topic: "python/mqtt/from_esp/brizer/tion_4s"
+           payload: !lambda |-
+              return "outdoor_temp:" + to_string(id(outdoor_temp).state);
+        - mqtt.publish:
+           topic: "python/mqtt/from_esp/brizer/tion-4s/outdoor_temperature_state"
+           payload: !lambda |-
+              return to_string(id(outdoor_temp).state);
+    # Optional, Heater power, W (watt).
+    heater_power:
+      name: "$name Heater power"
+      id: heater_power
+      on_value:
+        - mqtt.publish:
+           topic: "python/mqtt/from_esp/brizer/tion_4s"
+           payload: !lambda |-
+              return "heater_power:" + to_string(id(heater_power).state);
+        - mqtt.publish:
+           topic: "python/mqtt/from_esp/brizer/tion-4s/heater_power_state"
+           payload: !lambda |-
+              return to_string(id(heater_power).state);
+    # Optional, Total airflow counter, m³ (cubic meters).
+    airflow_counter:
+      name: "$name Airflow counter"
+      id: total_airflow
+      on_value:
+        - mqtt.publish:
+           topic: "python/mqtt/from_esp/brizer/tion_4s"
+           payload: !lambda |-
+              return "total_airflow:" + to_string(id(total_airflow).state);
+    boost_time:
+      name: $name Boost Time
+    current_temperature_state_topic: python/mqtt/from_esp/brizer/tion-4s/current_temperature_state
+    fan_mode_state_topic: python/mqtt/from_esp/brizer/tion-4s/fan_mode_state
+    fan_mode_command_topic: python/mqtt/to_esp/brizer/tion-4s/fan_mode_command
+    mode_state_topic: python/mqtt/from_esp/brizer/tion-4s/mode_state
+    mode_command_topic: python/mqtt/to_esp/brizer/tion-4s/mode_command
+    target_temperature_state_topic: python/mqtt/from_esp/brizer/tion-4s/target_temperature_state
+    target_temperature_command_topic: python/mqtt/to_esp/brizer/tion-4s/target_temperature_command
+
+# CO2 sensor
+sensor:
+  - platform: zyaura
+    # GPIO22 (SCL) yellow
+    # GPIO21 (SDA) green
+    clock_pin: GPIO21
+    data_pin: GPIO22
+    update_interval: 60s
+    co2:
+      name: "ZyAura CO2"
+      id: zyaura_co2
+      on_value:
+        - mqtt.publish:
+           topic: "python/mqtt/from_esp/brizer/tion_4s"
+           payload: !lambda |-
+              return "zyaura_co2:" + to_string(id(zyaura_co2).state);
+    temperature:
+      name: "ZyAura Temperature"
+      id: zyaura_temp
+      on_value:
+        - mqtt.publish:
+           topic: "python/mqtt/from_esp/brizer/tion_4s"
+           payload: !lambda |-
+              return "zyaura_temp:" + to_string(id(zyaura_temp).state);

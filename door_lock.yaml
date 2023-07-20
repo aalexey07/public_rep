@@ -1,0 +1,65 @@
+# Скрипт для ESP32 для дистанционного открытия электромеханического замка входной двери через бот в телеграмме.
+
+esphome:
+  name: "door-lock-32"
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+
+ota:
+
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  #ap:
+    #ssid: ###
+    #password: ###
+
+captive_portal:
+
+# MQTT configuration
+### Delete API line from YAML file if HA not used
+mqtt:
+    broker: ###
+    port: ###
+    username: ###
+    password: ###
+    # If the birth message and last will message have empty topics or topics that are different from each other,
+    # availability reporting will be disabled.
+    birth_message:
+        topic: python/mqtt/from_esp
+        payload: online
+    will_message:
+        topic: python/mqtt/from_esp
+        payload: offline
+    on_message:
+        # Door lock relay activation
+        - topic: python/mqtt/to_esp
+          payload: Open
+          then:
+            - switch.turn_on: door_relay
+            - delay: 0.5s
+            - switch.turn_off: door_relay
+            - mqtt.publish:
+                topic: python/mqtt/from_esp
+                payload: Received
+
+# Door lock relay initialization
+switch:
+    - platform: gpio
+      id: door_relay
+      pin:
+        number: GPIO4
+        inverted: FALSE
+        mode: OUTPUT

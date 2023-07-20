@@ -1,0 +1,397 @@
+esphome:
+  name: station
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+# api:
+#   password: "###"
+
+ota:
+  password: "###"
+
+substitutions:
+#  wifi_ssid: ###
+#  wifi_password: ###
+   wifi_ssid: ###
+   wifi_password: ###
+
+wifi:
+  ssid: $wifi_ssid
+  password: $wifi_password
+
+i2c:
+  - id: bus_a
+    sda: GPIO22
+    scl: GPIO21
+    scan: false
+  - id: bus_b
+    sda: GPIO32
+    scl: GPIO33
+    scan: false
+
+uart:
+  rx_pin: GPIO16
+  tx_pin: GPIO17
+  baud_rate: 9600
+
+spi:
+  clk_pin: GPIO18
+  mosi_pin: GPIO23
+
+mqtt:
+    broker: ###
+    port: ###
+    username: ###
+    password: ###
+    # If the birth message and last will message have empty topics or topics that are different from each other,
+    # availability reporting will be disabled.
+    birth_message:
+        topic: python/mqtt/from_esp/brizer/station
+        payload: online
+    will_message:
+        topic: python/mqtt/from_esp/brizer/station
+        payload: offline
+
+sensor:
+  # CO2 sensor
+  - platform: mhz19
+    co2:
+      name: "MH-Z19 CO2"
+      id: mhz19_co2
+      filters:
+      - median:
+          window_size: 5
+          send_every: 5
+          send_first_at: 1
+      - offset: 140.0
+      on_value:
+        - mqtt.publish:
+           topic: "python/mqtt/from_esp/brizer/tion_4s/mhz19_co2"
+           payload: !lambda |-
+              return to_string(id(mhz19_co2).state);
+    update_interval: 60s
+    automatic_baseline_calibration: false
+
+  # Temp, pressure, himidity sensor
+  - platform: bme280
+    temperature:
+      name: "BME280 Temperature"
+      id: bme280_temperature
+      on_value:
+        - mqtt.publish:
+           topic: "python/mqtt/from_esp/brizer/tion_4s/bme280_temperature"
+           payload: !lambda |-
+              return to_string(id(bme280_temperature).state);
+    pressure:
+      name: "BME280 Pressure"
+      id: bme280_pressure
+    humidity:
+      name: "BME280 Relative Humidity"
+      id: bme280_humidity
+      on_value:
+        - mqtt.publish:
+           topic: "python/mqtt/from_esp/brizer/tion_4s/bme280_humidity"
+           payload: !lambda |-
+              return to_string(id(bme280_humidity).state);
+    i2c_id: bus_a
+    address: 0x76
+    update_interval: 60s
+  # Pressure in mm Hg
+  - platform: template
+    name: "Pressure mm Hg"
+    id: bme280_pressure_mmhg
+    on_value:
+        - mqtt.publish:
+           topic: "python/mqtt/from_esp/brizer/tion_4s/bme280_pressure"
+           payload: !lambda |-
+              return to_string(0.750064*id(bme280_pressure).state);
+    lambda: |-
+      return (0.750064*id(bme280_pressure).state);
+
+# Ambient sensor
+  - platform: bh1750
+    name: "BH1750 Illuminance"
+    i2c_id: bus_b
+    address: 0x23
+    update_interval: 60s
+    id: bh1750_illuminance
+    on_value:
+        - mqtt.publish:
+           topic: "python/mqtt/from_esp/brizer/tion_4s/bh1750_illuminance"
+           payload: !lambda |-
+              return to_string(id(bh1750_illuminance).state);
+
+text_sensor:
+  - platform: mqtt_subscribe
+    name: "Brizer mode"
+    id: brizer_mode_state
+    topic: "python/mqtt/from_esp/brizer/tion-4s/mode_state"       
+
+  - platform: mqtt_subscribe
+    name: "Brizer fan mode"
+    id: brizer_fan_mode_state
+    topic: "python/mqtt/from_esp/brizer/tion-4s/fan_mode_state"
+
+  - platform: mqtt_subscribe
+    name: "Brizer outdoor temp"
+    id: brizer_outdoor_temp
+    topic: "python/mqtt/from_esp/brizer/tion-4s/outdoor_temperature_state"
+
+  - platform: mqtt_subscribe
+    name: "Brizer current temp"
+    id: brizer_current_temp
+    topic: "python/mqtt/from_esp/brizer/tion-4s/current_temperature_state"
+
+  - platform: mqtt_subscribe
+    name: "Brizer target temp"
+    id: brizer_target_temp
+    topic: "python/mqtt/from_esp/brizer/tion-4s/target_temperature_state"
+
+  - platform: mqtt_subscribe
+    name: "Brizer recirculation"
+    id: brizer_recirculation_state
+    topic: "python/mqtt/from_esp/brizer/tion-4s/recirculation_state"
+
+  - platform: mqtt_subscribe
+    name: "Brizer heater power"
+    id: brizer_heater_power
+    topic: "python/mqtt/from_esp/brizer/tion-4s/heater_power_state"
+
+# Wi-Fi connection state
+globals:
+  - id: wifi_connection
+    type: bool
+    restore_value: no
+    initial_value: "false"
+
+interval:
+  - interval: 10s
+    then:
+      - if:
+          condition:
+            wifi.connected:
+          then:
+            - lambda: |-
+                id(wifi_connection) = true;
+          else:
+            - lambda: |-
+                id(wifi_connection) = false;
+
+font:
+  - file: "fonts2/homer-simpson-revised-regular.ttf"
+    id: title_font
+    size: 85
+
+  - file: "fonts2/homer-simpson-revised-regular.ttf"
+    id: big_font
+    size: 70
+
+  - file: "fonts2/homer-simpson-revised-regular.ttf"
+    id: medium_font
+    size: 20
+
+  - file: "fonts2/homer-simpson-revised-regular.ttf"
+    id: small_font
+    size: 10
+
+time:
+  - platform: sntp
+    id: my_time
+    timezone: <+03>-3
+
+display:
+  - platform: ili9xxx
+    model: ili9341
+    dc_pin: GPIO25
+    cs_pin: GPIO26
+    reset_pin: GPIO27
+    dimensions: 320x240
+    rotation: 270
+    lambda: |-
+      auto red = Color(0, 0, 255);
+      auto yellow = Color(0, 255, 255);
+      auto dark = Color(55, 55, 55);
+      auto dark_red = Color(0, 0, 55);
+      auto dark_yellow = Color(0, 55, 55); 
+      it.fill(COLOR_OFF);
+
+      if (id(bh1750_illuminance).state < 30) {
+        // Clock
+      it.strftime(it.get_width()/2, 0, id(title_font), dark, TextAlign::CENTER_HORIZONTAL, "%H:%M",  id(my_time).now());
+      // Wi-Fi state sensor
+      if (id(wifi_connection) == 0) {
+        it.printf(225, 84, id(small_font), dark_yellow, TextAlign::BOTTOM_RIGHT, "%s", "WF");
+      }
+      it.line(15, 85, it.get_width() - 16, 85, dark);
+
+      // Drawing lines between sensors
+      it.line(5, 150, it.get_width() - 6, 150, dark);
+      it.line(5, 212, it.get_width() - 6, 212, dark);
+      it.line(5, 274, it.get_width() - 6, 274, dark);
+
+      // CO2 sensor
+      it.printf(5, 141, id(medium_font), dark, TextAlign::BOTTOM_LEFT, "CO");
+      it.printf(33, 141, id(small_font), dark, TextAlign::BOTTOM_LEFT, "2");
+      // Changing color depending on CO2 measurements
+      if (id(mhz19_co2).state < 800) {
+        it.printf(190, 160, id(big_font), dark, TextAlign::BOTTOM_RIGHT, "%4.0f", id(mhz19_co2).state);
+      } else {
+        if (id(mhz19_co2).state > 1200) {
+        it.printf(190, 160, id(big_font), dark_red, TextAlign::BOTTOM_RIGHT, "%4.0f", id(mhz19_co2).state);
+      } else {
+        it.printf(190, 160, id(big_font), dark_yellow, TextAlign::BOTTOM_RIGHT, "%4.0f", id(mhz19_co2).state);
+      }
+      }
+      it.printf(205, 141, id(medium_font), dark, TextAlign::BOTTOM_LEFT, "ppm");
+
+      // Brizer state
+      // mode
+      if (id(brizer_mode_state).state == "fan_only") {
+        it.print(5, 203, id(medium_font), dark, TextAlign::BOTTOM_LEFT, "FAN");
+      } else {
+        if (id(brizer_mode_state).state == "heat") {
+        it.print(5, 203, id(medium_font), dark, TextAlign::BOTTOM_LEFT, "HEAT");
+      // Brizer heat power
+        it.printf(210, 313, id(medium_font), dark, TextAlign::BOTTOM_RIGHT, "%s", str_truncate(id(brizer_heater_power).state, 3).c_str());
+        it.printf(225, 310, id(small_font), dark, TextAlign::BOTTOM_RIGHT, "w");
+      } else {
+        if (id(brizer_mode_state).state == "off") {
+        it.print(5, 203, id(medium_font), dark_red, TextAlign::BOTTOM_LEFT, "OFF");
+      } else {
+        it.print(5, 203, id(medium_font), dark_red, TextAlign::BOTTOM_LEFT, id(brizer_mode_state).state.c_str());
+      }
+      }
+      }
+      // fan speed
+      it.printf(110, 222, id(big_font), dark, TextAlign::BOTTOM_RIGHT, id(brizer_fan_mode_state).state.c_str());
+      // target temp
+      it.printf(144, 203, id(medium_font), dark, TextAlign::BOTTOM_RIGHT, "%s", str_truncate(id(brizer_target_temp).state, 2).c_str());
+      it.circle(154, 185, 2, dark);
+      it.print(159, 203, id(medium_font), dark, TextAlign::BOTTOM_LEFT, "C");
+      // recirculation
+      if (id(brizer_recirculation_state).state == "1") {
+        it.circle(215, 180, 20, dark_yellow);
+        it.line(229, 175, 235, 180, dark_yellow);
+        it.line(235, 180, 240, 175, dark_yellow);
+        it.line(229, 176, 235, 181, dark_yellow);
+        it.line(235, 181, 240, 176, dark_yellow);
+        it. filled_rectangle(210, 182, 40, 6, COLOR_OFF);
+      } 
+      
+      // Temperature
+      it.printf(5, 265, id(medium_font), dark, TextAlign::BOTTOM_LEFT, "%s", str_truncate(id(brizer_outdoor_temp).state, 2).c_str());
+      it.line(32, 257, 37, 252, dark);
+      it.line(32, 247, 37, 252, dark);
+      it.line(33, 257, 38, 252, dark);
+      it.line(33, 247, 38, 252, dark);
+      it.printf(45, 265, id(medium_font), dark, TextAlign::BOTTOM_LEFT, "%s", str_truncate(id(brizer_current_temp).state, 2).c_str());
+      it.line(72, 257, 77, 252, dark);
+      it.line(72, 247, 77, 252, dark);
+      it.line(73, 257, 78, 252, dark);
+      it.line(73, 247, 78, 252, dark);
+      it.printf(208, 284, id(big_font), dark, TextAlign::BOTTOM_RIGHT, "%2.1f", id(bme280_temperature).state);
+      it.circle(217, 247, 2, dark);
+      it.print(222, 265, id(medium_font), dark, TextAlign::BOTTOM_LEFT, "C");
+
+      // Pressure & Humidity
+      it.printf(5, 313, id(medium_font), dark, TextAlign::BOTTOM_LEFT, "%3.0f", (id(bme280_pressure_mmhg).state));
+      it.printf(51, 300, id(small_font), dark, TextAlign::BOTTOM_LEFT, "mm");
+      it.printf(53, 311, id(small_font), dark, TextAlign::BOTTOM_LEFT, "Hg");
+      it.printf(82, 313, id(medium_font), dark, TextAlign::BOTTOM_LEFT, "%3.0f", (id(bme280_humidity).state));
+      it.circle(120, 295, 2, dark);
+      it.circle(130, 303, 2, dark);
+      it.line(120, 305, 130, 295, dark);        
+      } else {
+      // Clock
+      it.strftime(it.get_width()/2, 0, id(title_font), TextAlign::CENTER_HORIZONTAL, "%H:%M",  id(my_time).now());
+      // Wi-Fi state sensor
+      if (id(wifi_connection) == 0) {
+        it.printf(225, 84, id(small_font), yellow, TextAlign::BOTTOM_RIGHT, "%s", "WF");
+      }
+      it.line(15, 85, it.get_width() - 16, 85);
+
+      // Drawing lines between sensors
+      it.line(5, 150, it.get_width() - 6, 150, dark);
+      it.line(5, 212, it.get_width() - 6, 212, dark);
+      it.line(5, 274, it.get_width() - 6, 274, dark);
+
+      // CO2 sensor
+      it.printf(5, 141, id(medium_font), TextAlign::BOTTOM_LEFT, "CO");
+      it.printf(33, 141, id(small_font), TextAlign::BOTTOM_LEFT, "2");
+      // Changing color depending on CO2 measurements
+      if (id(mhz19_co2).state < 800) {
+        it.printf(190, 160, id(big_font), TextAlign::BOTTOM_RIGHT, "%4.0f", id(mhz19_co2).state);
+      } else {
+        if (id(mhz19_co2).state > 1200) {
+        it.printf(190, 160, id(big_font), red, TextAlign::BOTTOM_RIGHT, "%4.0f", id(mhz19_co2).state);
+      } else {
+        it.printf(190, 160, id(big_font), yellow, TextAlign::BOTTOM_RIGHT, "%4.0f", id(mhz19_co2).state);
+      }
+      }
+      it.printf(205, 141, id(medium_font), TextAlign::BOTTOM_LEFT, "ppm");
+
+      // Brizer state
+      // mode
+      if (id(brizer_mode_state).state == "fan_only") {
+        it.print(5, 203, id(medium_font), TextAlign::BOTTOM_LEFT, "FAN");
+      } else {
+        if (id(brizer_mode_state).state == "heat") {
+        it.print(5, 203, id(medium_font), TextAlign::BOTTOM_LEFT, "HEAT");
+      // Brizer heat power
+        it.printf(210, 313, id(medium_font), TextAlign::BOTTOM_RIGHT, "%s", str_truncate(id(brizer_heater_power).state, 3).c_str());
+        it.printf(225, 310, id(small_font), TextAlign::BOTTOM_RIGHT, "w");
+      } else {
+        if (id(brizer_mode_state).state == "off") {
+        it.print(5, 203, id(medium_font), red, TextAlign::BOTTOM_LEFT, "OFF");
+      } else {
+        it.print(5, 203, id(medium_font), red, TextAlign::BOTTOM_LEFT, id(brizer_mode_state).state.c_str());
+      }
+      }
+      }
+      // fan speed
+      it.printf(110, 222, id(big_font), TextAlign::BOTTOM_RIGHT, id(brizer_fan_mode_state).state.c_str());
+      // target temp
+      it.printf(144, 203, id(medium_font), TextAlign::BOTTOM_RIGHT, "%s", str_truncate(id(brizer_target_temp).state, 2).c_str());
+      it.circle(154, 185, 2);
+      it.print(159, 203, id(medium_font), TextAlign::BOTTOM_LEFT, "C");
+      // recirculation
+      if (id(brizer_recirculation_state).state == "1") {
+        it.circle(215, 180, 20, yellow);
+        it.line(229, 175, 235, 180, yellow);
+        it.line(235, 180, 240, 175, yellow);
+        it.line(229, 176, 235, 181, yellow);
+        it.line(235, 181, 240, 176, yellow);
+        it. filled_rectangle(210, 182, 40, 6, COLOR_OFF);
+      } 
+
+      // Temperature
+      it.printf(5, 265, id(medium_font), TextAlign::BOTTOM_LEFT, "%s", str_truncate(id(brizer_outdoor_temp).state, 2).c_str());
+      it.line(32, 257, 37, 252);
+      it.line(32, 247, 37, 252);
+      it.line(33, 257, 38, 252);
+      it.line(33, 247, 38, 252);
+      it.printf(45, 265, id(medium_font), TextAlign::BOTTOM_LEFT, "%s", str_truncate(id(brizer_current_temp).state, 2).c_str());
+      it.line(72, 257, 77, 252);
+      it.line(72, 247, 77, 252);
+      it.line(73, 257, 78, 252);
+      it.line(73, 247, 78, 252);
+      it.printf(208, 284, id(big_font), TextAlign::BOTTOM_RIGHT, "%2.1f", id(bme280_temperature).state);
+      it.circle(217, 247, 2);
+      it.print(222, 265, id(medium_font), TextAlign::BOTTOM_LEFT, "C");
+
+      // Pressure & Humidity
+      it.printf(5, 313, id(medium_font), TextAlign::BOTTOM_LEFT, "%3.0f", (id(bme280_pressure_mmhg).state));
+      it.printf(51, 300, id(small_font), TextAlign::BOTTOM_LEFT, "mm");
+      it.printf(53, 311, id(small_font), TextAlign::BOTTOM_LEFT, "Hg");
+      it.printf(82, 313, id(medium_font), TextAlign::BOTTOM_LEFT, "%3.0f", (id(bme280_humidity).state));
+      it.circle(120, 295, 2);
+      it.circle(130, 303, 2);
+      it.line(120, 305, 130, 295);
+      }

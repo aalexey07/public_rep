@@ -2,8 +2,9 @@
 В файлах с кодом есть комментарии, для чего они используются.
 <details>
   <summary>Фото прототипа метеостанции</summary>
-  ![image](https://github.com/aalexey07/public_rep/assets/113174150/df6016eb-07e3-4ebb-b226-b9c65bb155ab)
-  ![image](https://github.com/aalexey07/public_rep/assets/113174150/196480ef-2b58-4d63-a18b-70caa9b27a2d)
+  https://github.com/aalexey07/public_rep/assets/113174150/df6016eb-07e3-4ebb-b226-b9c65bb155ab
+  
+  https://github.com/aalexey07/public_rep/assets/113174150/196480ef-2b58-4d63-a18b-70caa9b27a2d
 </details>
 
 ___
